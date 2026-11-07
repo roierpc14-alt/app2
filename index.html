@@ -44,6 +44,11 @@ small{display:block;margin-top:6px;color:#8e8e93;font-size:12px}
 .seg button,.seg2 button{flex:1;padding:10px 0;border:0;border-radius:9px;background:transparent;color:#aeaeb2;font:600 15px system-ui,sans-serif}
 .seg button.on,.seg2 button.on{background:#3a3a3c;color:var(--ac)}
 .seg2{flex-wrap:wrap;gap:3px}.seg2 button{min-width:96px}
+.nat video,.nat #zb{display:none}
+#idle{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:20px;color:#aeaeb2;font-size:15px;pointer-events:none}
+.nat #idle{display:flex}.res #idle{display:none}
+.ring{width:96px;height:96px;border-radius:50%;border:5px solid #fff;position:relative}
+.ring::after{content:"";position:absolute;inset:26px;border-radius:50%;background:var(--ac)}
 #ok{width:100%;margin-top:24px;padding:14px;border:0;border-radius:14px;background:var(--ac);color:#000;font:700 16px system-ui,sans-serif}
 </style>
 </head>
@@ -52,6 +57,7 @@ small{display:block;margin-top:6px;color:#8e8e93;font-size:12px}
   <video id="v" autoplay playsinline muted></video>
   <canvas id="c"></canvas>
   <div class="shade"></div>
+  <div id="idle"><div class="ring"></div><span>Toca para abrir la cámara</span></div>
   <div id="pill" class="glass"></div>
   <button id="gear" class="ctl glass" aria-label="Ajustes">
     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="7.6" stroke-width="3.2" stroke-dasharray="2.98 2.98"/><circle cx="12" cy="12" r="6"/></svg>
@@ -65,7 +71,9 @@ small{display:block;margin-top:6px;color:#8e8e93;font-size:12px}
       <small>Consíguela en aistudio.google.com/apikey. Se guarda solo en este dispositivo.</small>
       <label>Nivel de pensamiento</label>
       <div class="seg" data-k="think"><button data-v="low">Bajo</button><button data-v="mid">Medio</button><button data-v="high">Alto</button></div>
-      <label>Zoom inicial</label>
+      <label>Cámara</label>
+      <div class="seg" data-k="mode"><button data-v="native">Cámara del teléfono</button><button data-v="viewer">Visor en la app</button></div>
+      <label>Zoom inicial (solo visor)</label>
       <div class="seg" data-k="zoom"><button data-v="0.5">.5x</button><button data-v="1">1x</button><button data-v="2">2x</button></div>
       <label>Cámara gran angular (.5x)</label>
       <div class="seg2" id="wide"></div>
@@ -74,12 +82,13 @@ small{display:block;margin-top:6px;color:#8e8e93;font-size:12px}
     </div>
   </div>
 </div>
+<input id="nat" type="file" accept="image/*" capture="environment" hidden>
 <audio id="sil" loop playsinline></audio>
 <script>
 const $=s=>document.querySelector(s);
 const st=$('#stage'),vid=$('#v'),cv=$('#c'),pill=$('#pill'),zb=$('#zb'),sheet=$('#set'),keyI=$('#key'),sil=$('#sil');
 const LVL={low:'LOW',mid:'MEDIUM',high:'HIGH'};
-const MODEL='gemini-flash-latest';
+const MODELS=['gemini-flash-latest','gemini-3.6-flash','gemini-3.5-flash-lite'];
 const SYS=`Eres un profesor particular de programación, algoritmos, lógica y matemáticas que habla con el estudiante por audio, mientras este camina con audífonos. Recibes una foto de código, pseudocódigo, un diagrama de flujo, un ejercicio o apuntes.
 
 Reglas de formato, porque tu respuesta se lee en voz alta:
@@ -101,7 +110,7 @@ Dictado de diagramas de flujo. Dicta las figuras de arriba hacia abajo, siempre 
 
 Dictado de código. Dicta el código línea por línea, empezando cada una con su número: Línea uno. Las palabras clave y los nombres cortos, de hasta cuatro letras, como int, cin, for, i o n, se deletrean diciendo el nombre de cada letra, por ejemplo: i ene te. Los nombres largos se dicen enteros después de avisar, por ejemplo: escribe la palabra contador, todo junto y en minúsculas. Los símbolos se dicen por su nombre: numeral, abre paréntesis, cierra paréntesis, abre llave, cierra llave, punto y coma, signo igual, doble signo igual, signo menor que, más más, comillas dobles, guion bajo. Indica los espacios (deja un espacio), las sangrías (deja cuatro espacios) y los saltos de línea (presiona enter para pasar a la siguiente línea). Si algo va en mayúscula, dilo. Al terminar di: fin del código.`;
 
-let S={key:'',think:'mid',zoom:1};
+let S={key:'',think:'mid',zoom:1,mode:'native'};
 try{Object.assign(S,JSON.parse(localStorage.getItem('zf')||'{}'))}catch(e){}
 const save=()=>{try{localStorage.setItem('zf',JSON.stringify(S))}catch(e){}};
 const say=(t,busy)=>{pill.textContent=t;pill.classList.toggle('busy',!!busy);pill.classList.toggle('on',!!t)};
@@ -174,24 +183,37 @@ async function snap(){
 }
 
 /* ---------- Gemini ---------- */
-async function ask(b64){
+async function call(m,b64){
   const ac=new AbortController(),to=setTimeout(()=>ac.abort(),120000);
   try{
-    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+MODEL+':generateContent',{
-      method:'POST',signal:ac.signal,
-      headers:{'Content-Type':'application/json','x-goog-api-key':S.key},
-      body:JSON.stringify({
-        systemInstruction:{parts:[{text:SYS}]},
-        contents:[{role:'user',parts:[{inline_data:{mime_type:'image/jpeg',data:b64}},{text:'Explícame esto por audio.'}]}],
-        generationConfig:{thinkingConfig:{thinkingLevel:LVL[S.think]}}
-      })
-    });
+    let r;
+    try{
+      r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent',{
+        method:'POST',signal:ac.signal,
+        headers:{'Content-Type':'application/json','x-goog-api-key':S.key},
+        body:JSON.stringify({
+          systemInstruction:{parts:[{text:SYS}]},
+          contents:[{role:'user',parts:[{inline_data:{mime_type:'image/jpeg',data:b64}},{text:'Explícame esto por audio.'}]}],
+          generationConfig:{thinkingConfig:{thinkingLevel:LVL[S.think]}}
+        })
+      });
+    }catch(e){e.retry=true;throw e}
     const j=await r.json();
-    if(!r.ok)throw new Error(j.error&&j.error.message||('HTTP '+r.status));
+    if(!r.ok){const e=new Error((j.error&&j.error.message)||('HTTP '+r.status));e.retry=[404,429,500,503,504].includes(r.status);throw e}
     const t=((j.candidates&&j.candidates[0]&&j.candidates[0].content.parts)||[]).filter(p=>!p.thought).map(p=>p.text||'').join(' ').trim();
     if(!t)throw new Error('La respuesta llegó vacía');
     return t;
   }finally{clearTimeout(to)}
+}
+/* Si Google está saturado: reintenta y, si sigue, prueba con otros modelos */
+async function ask(b64){
+  let last;
+  for(const [mi,w] of [[0,0],[0,2500],[1,0],[2,0]]){
+    if(w){say('Google está saturado. Reintentando…',1);await new Promise(r=>setTimeout(r,w))}
+    try{return await call(MODELS[mi],b64)}
+    catch(e){last=e;if(!e.retry)throw e}
+  }
+  throw last;
 }
 
 /* ---------- Audio: voz por frases, bucle y retroceso de 5 s ---------- */
@@ -235,7 +257,7 @@ function nxt(k){
 function play(t){
   P.ch=split(t);P.d=[];
   if(!P.ch.length)return;
-  P.on=1;session();from(0);
+  P.on=1;session();sil.play().catch(()=>{});from(0);
 }
 function pz(){
   if(!P.on||P.pz)return;
@@ -282,23 +304,39 @@ let mode='live',lock=0;
 st.addEventListener('pointerup',e=>{
   if(e.target.closest('.ctl')||Date.now()<lock)return;
   lock=Date.now()+600;
-  if(mode==='live')shoot();
-  else if(mode==='result')back();
+  if(mode==='live'){S.mode==='native'?openNat():shoot()}
+  else if(mode==='result'){back();if(S.mode==='native')openNat()}
 });
-async function shoot(){
-  if(!S.key){openSet();return}
-  if(!stream||vid.readyState<2){say('La cámara aún no está lista');return}
-  mode='busy';say('Capturando…',1);unlockAudio();
+async function analyze(getB64){
+  mode='busy';say('Preparando…',1);
   try{
-    const b64=await snap();
+    const b64=await getB64();
     st.classList.add('res');say('Analizando…',1);
     const t=await ask(b64);
     mode='result';play(t);say('Reproduciendo. Toca para una nueva foto');
   }catch(err){
     mode='result';st.classList.add('res');
-    say('Error: '+String(err.message||err).slice(0,90)+'. Toca para volver');
+    say('Error: '+String(err.message||err).slice(0,220)+'. Toca para volver');
   }
 }
+function shoot(){
+  if(!S.key){openSet();return}
+  if(!stream||vid.readyState<2){say('La cámara aún no está lista');return}
+  unlockAudio();analyze(snap);
+}
+/* Modo cámara del teléfono: abre la app de cámara real y analiza sola al volver */
+const nat=$('#nat');
+function openNat(){
+  if(!S.key){openSet();return}
+  unlockAudio();nat.value='';nat.click();
+}
+async function fromFile(f){
+  const b=await createImageBitmap(f),k=Math.min(1,1800/Math.max(b.width,b.height));
+  cv.width=Math.round(b.width*k);cv.height=Math.round(b.height*k);
+  cv.getContext('2d').drawImage(b,0,0,cv.width,cv.height);
+  return cv.toDataURL('image/jpeg',.85).split(',')[1];
+}
+nat.onchange=()=>{const f=nat.files[0];if(f)analyze(()=>fromFile(f))};
 function back(){stop();mode='live';st.classList.remove('res');say('')}
 
 /* ---------- Ajustes ---------- */
@@ -313,15 +351,21 @@ keyI.oninput=()=>{S.key=keyI.value.trim();save()};
 sheet.querySelectorAll('.seg').forEach(g=>g.onclick=e=>{
   const b=e.target.closest('button');if(!b)return;
   const k=g.dataset.k;S[k]=k==='zoom'?+b.dataset.v:b.dataset.v;save();sync();
-  if(k==='zoom')setZoom(S.zoom);
+  if(k==='zoom'&&stream)setZoom(S.zoom);if(k==='mode')applyMode();
 });
 
+function applyMode(){
+  const isN=S.mode==='native';
+  st.classList.toggle('nat',isN);
+  if(isN){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+  else cam();
+}
 /* ---------- Arranque ---------- */
 document.addEventListener('visibilitychange',()=>{
-  if(!document.hidden&&mode==='live'&&(!stream||stream.getTracks()[0].readyState!=='live'))cam();
+  if(!document.hidden&&mode==='live'&&S.mode==='viewer'&&(!stream||stream.getTracks()[0].readyState!=='live'))cam();
 });
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
-cam();
+applyMode();
 if(!S.key)openSet();
 </script>
 </body>
