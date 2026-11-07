@@ -35,10 +35,10 @@ canvas{display:none}
 button{cursor:pointer}
 #set{position:absolute;inset:0;display:none;align-items:flex-end;background:rgba(0,0,0,.6)}
 #set.open{display:flex}
-.card{width:100%;max-width:520px;margin:0 auto;background:#1c1c1e;border-radius:24px 24px 0 0;padding:22px 20px calc(env(safe-area-inset-bottom,0px) + 22px)}
+.card{width:100%;max-width:520px;max-height:92dvh;overflow-y:auto;margin:0 auto;background:#1c1c1e;border-radius:24px 24px 0 0;padding:22px 20px calc(env(safe-area-inset-bottom,0px) + 22px)}
 h2{margin:0 0 4px;font-size:20px}
 label{display:block;margin:18px 0 8px;font-size:13px;color:#aeaeb2}
-input{width:100%;padding:13px 14px;border:1px solid #3a3a3c;border-radius:12px;background:#000;color:#fff;font:16px ui-monospace,Menlo,monospace;user-select:text;-webkit-user-select:text}
+input,textarea{width:100%;padding:13px 14px;border:1px solid #3a3a3c;border-radius:12px;background:#000;color:#fff;font:16px ui-monospace,Menlo,monospace;user-select:text;-webkit-user-select:text}
 small{display:block;margin-top:6px;color:#8e8e93;font-size:12px}
 .seg,.seg2{display:flex;padding:3px;border-radius:12px;background:#000}
 .seg button,.seg2 button{flex:1;padding:10px 0;border:0;border-radius:9px;background:transparent;color:#aeaeb2;font:600 15px system-ui,sans-serif}
@@ -47,11 +47,15 @@ small{display:block;margin-top:6px;color:#8e8e93;font-size:12px}
 .nat video,.nat #zb{display:none}
 #idle{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:20px;color:#aeaeb2;font-size:15px;pointer-events:none}
 .nat #idle{display:flex}.res #idle{display:none}
-.ring{width:96px;height:96px;border-radius:50%;border:5px solid #fff;position:relative}
+.ring{width:96px;height:96px;padding:0;background:transparent;pointer-events:auto;border-radius:50%;border:5px solid #fff;position:relative}
 .ring::after{content:"";position:absolute;inset:26px;border-radius:50%;background:var(--ac)}
 input[type=range]{padding:0;border:0;background:transparent;accent-color:var(--ac);height:28px}
 #back{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);left:14px;width:44px;height:44px;padding:0;border-radius:50%;color:#fff;display:none;place-items:center}
 .res #back{display:grid}
+textarea{font-size:13px;line-height:1.4;height:220px;resize:vertical}
+#rst{margin-top:8px;padding:10px 14px;border:1px solid #3a3a3c;border-radius:10px;background:transparent;color:#aeaeb2;font:600 14px system-ui,sans-serif}
+.ver{display:block;margin-top:14px;text-align:center;color:#636366;font-size:11px}
+#idle .ver{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);margin:0}
 #ok{width:100%;margin-top:24px;padding:14px;border:0;border-radius:14px;background:var(--ac);color:#000;font:700 16px system-ui,sans-serif}
 </style>
 </head>
@@ -60,7 +64,7 @@ input[type=range]{padding:0;border:0;background:transparent;accent-color:var(--a
   <video id="v" autoplay playsinline muted></video>
   <canvas id="c"></canvas>
   <div class="shade"></div>
-  <div id="idle"><div class="ring"></div><span>Toca para abrir la cámara</span></div>
+  <div id="idle"><button id="shutter" class="ctl ring" aria-label="Abrir cámara"></button><span>Toca el círculo para abrir la cámara</span><span class="ver"></span></div>
   <div id="pill" class="glass"></div>
   <button id="back" class="ctl glass" aria-label="Volver">
     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
@@ -77,6 +81,9 @@ input[type=range]{padding:0;border:0;background:transparent;accent-color:var(--a
       <small>Consíguela en aistudio.google.com/apikey. Se guarda solo en este dispositivo.</small>
       <label>Nivel de pensamiento</label>
       <div class="seg" data-k="think"><button data-v="low">Bajo</button><button data-v="mid">Medio</button><button data-v="high">Alto</button></div>
+      <label>Modelo de IA</label>
+      <div class="seg" data-k="model"><button data-v="auto">Automático</button><button data-v="est">3.6 Flash</button><button data-v="rap">Ligero</button></div>
+      <small>Si el elegido falla, prueba los otros. Al final verás cuál respondió.</small>
       <label>Velocidad de la voz: <span id="rv"></span></label>
       <input id="rate" type="range" min="0.5" max="1.3" step="0.05">
       <small>Hacia la izquierda es más lenta y pausada.</small>
@@ -87,7 +94,12 @@ input[type=range]{padding:0;border:0;background:transparent;accent-color:var(--a
       <label>Cámara gran angular (.5x)</label>
       <div class="seg2" id="wide"></div>
       <small id="wh"></small>
+      <label for="sys">Instrucciones para la IA (se guardan al escribir)</label>
+      <textarea id="sys" spellcheck="false"></textarea>
+      <button id="rst">Restaurar las originales</button>
+      <small>Si una versión nueva trae instrucciones mejoradas, pulsa Restaurar para tomarlas.</small>
       <button id="ok">Listo</button>
+      <span class="ver"></span>
     </div>
   </div>
 </div>
@@ -97,7 +109,9 @@ input[type=range]{padding:0;border:0;background:transparent;accent-color:var(--a
 const $=s=>document.querySelector(s);
 const st=$('#stage'),vid=$('#v'),cv=$('#c'),pill=$('#pill'),zb=$('#zb'),sheet=$('#set'),keyI=$('#key'),sil=$('#sil');
 const LVL={low:'LOW',mid:'MEDIUM',high:'HIGH'};
+const VER='v6';
 const MODELS=['gemini-flash-latest','gemini-3.6-flash','gemini-3.5-flash-lite'];
+const ORDER={auto:[0,1,2],est:[1,0,2],rap:[2,1,0]};
 const SYS=`Eres un profesor particular de programación, algoritmos, lógica y matemáticas que habla con el estudiante por audio, mientras este camina con audífonos. Recibes una foto de código, pseudocódigo, un diagrama de flujo, un ejercicio o apuntes.
 
 Reglas de formato, porque tu respuesta se lee en voz alta:
@@ -117,9 +131,9 @@ Dictado de matemáticas. Dicta cada expresión en el orden en que se escribe y m
 
 Dictado de diagramas de flujo. Dicta las figuras de arriba hacia abajo, siempre con los mismos nombres: óvalo para inicio y fin, paralelogramo para entrada y salida de datos, rectángulo para procesos, rombo para decisiones y círculo pequeño para conectores. Ejemplo: Dibuja un óvalo y escribe dentro: Inicio. Debajo, dibuja una flecha hacia abajo. Dibuja un paralelogramo y escribe dentro: leer ene. En cada rombo di qué se escribe dentro, de qué lado sale el sí, de qué lado sale el no y qué se escribe sobre cada flecha. Dicta cada camino hasta que se una con otro o regrese a una figura anterior, nombrando esa figura. Al terminar di: fin del diagrama.
 
-Dictado de código. El estudiante escribe el código a mano, en papel, así que habla para alguien que tiene un lápiz en la mano: nunca menciones teclado, enter ni tabulador. Dicta línea por línea, empezando cada una con su número: Línea uno. Cada instrucción va en su propia línea de texto, con un solo elemento por línea. Deletrea siempre todo lo que sea código, tanto las palabras clave como los nombres de variables y funciones, letra por letra, con el nombre de cada letra y separadas por comas, nunca como palabra. Por ejemplo, la palabra int se dicta así: Escribe: i, ene, te. Usa estos nombres de letras: a, be, ce, de, e, efe, ge, hache, i, jota, ka, ele, eme, ene, o, pe, cu, ere, ese, te, u, uve, doble uve, equis, ye, zeta. Si una letra va en mayúscula, di: letra mayúscula. Los números largos se dicen dígito por dígito. Entre un elemento y otro di, en su propia línea: deja un espacio. Los símbolos se dicen por su nombre: numeral, abre paréntesis, cierra paréntesis, abre llave, cierra llave, punto y coma, signo igual, doble signo igual, signo menor que, más más, comillas dobles, guion bajo. Al terminar una línea de código di: pasa a la siguiente línea del papel. Para la sangría di: deja cuatro espacios de sangría desde el margen. Al terminar di: fin del código.`;
+Dictado de código. El estudiante escribe el código a mano, en papel, así que habla para alguien que tiene un lápiz en la mano: nunca menciones teclado, enter ni tabulador. Dicta línea por línea, empezando cada una con su número: Línea uno. Cada instrucción va en su propia línea de texto, con un solo elemento por línea. Todo lo que sea código (palabras clave, nombres de variables y funciones, símbolos, operadores y números) escríbelo entre dobles corchetes, exactamente como va en el código, sin decir su nombre ni deletrearlo: la aplicación lo deletreará letra por letra. Por ejemplo: Escribe: [[std]]. Luego: Escribe: [[::]]. Luego: Escribe: [[cout]]. No uses dobles corchetes para nada más. Entre un elemento y otro di, en su propia línea: deja un espacio. Al terminar una línea de código di: pasa a la siguiente línea del papel. Para la sangría di: deja cuatro espacios de sangría desde el margen. Al terminar di: fin del código.`;
 
-let S={key:'',think:'mid',zoom:1,mode:'native',rate:.9};
+let S={key:'',think:'mid',zoom:1,mode:'native',rate:.9,model:'auto',sys:''};
 try{Object.assign(S,JSON.parse(localStorage.getItem('zf')||'{}'))}catch(e){}
 const save=()=>{try{localStorage.setItem('zf',JSON.stringify(S))}catch(e){}};
 const say=(t,busy)=>{pill.textContent=t;pill.classList.toggle('busy',!!busy);pill.classList.toggle('on',!!t)};
@@ -191,39 +205,67 @@ async function snap(){
   return cv.toDataURL('image/jpeg',.85).split(',')[1];
 }
 
-/* ---------- Gemini ---------- */
-async function call(m,b64){
-  const ac=new AbortController(),to=setTimeout(()=>ac.abort(),120000);
+/* ---------- Gemini (respuesta por partes) ---------- */
+async function callStream(m,b64,onText){
+  const ac=new AbortController(),T=S.think==='high'?70000:40000;
+  let to,got=0,mv=m;
+  const arm=()=>{clearTimeout(to);to=setTimeout(()=>ac.abort(),T)};
   try{
+    arm();
     let r;
     try{
-      r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent',{
+      r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':streamGenerateContent?alt=sse',{
         method:'POST',signal:ac.signal,
         headers:{'Content-Type':'application/json','x-goog-api-key':S.key},
         body:JSON.stringify({
-          systemInstruction:{parts:[{text:SYS}]},
+          systemInstruction:{parts:[{text:(S.sys&&S.sys.trim())?S.sys:SYS}]},
           contents:[{role:'user',parts:[{inline_data:{mime_type:'image/jpeg',data:b64}},{text:'Explícame esto por audio.'}]}],
           generationConfig:{thinkingConfig:{thinkingLevel:LVL[S.think]}}
         })
       });
-    }catch(e){e.retry=true;throw e}
-    const j=await r.json();
-    if(!r.ok){const e=new Error((j.error&&j.error.message)||('HTTP '+r.status));e.retry=[404,429,500,503,504].includes(r.status);throw e}
-    const t=((j.candidates&&j.candidates[0]&&j.candidates[0].content.parts)||[]).filter(p=>!p.thought).map(p=>p.text||'').join(' ').trim();
-    if(!t)throw new Error('La respuesta llegó vacía');
-    return t;
+    }catch(e){e.message=ac.signal.aborted?'sin respuesta a tiempo':'sin conexión';e.retry=true;throw e}
+    if(!r.ok){
+      const j=await r.json().catch(()=>({})),er=(Array.isArray(j)?j[0]:j)||{};
+      const e=new Error((er.error&&er.error.message)||('HTTP '+r.status));
+      e.retry=[404,429,500,503,504].includes(r.status);throw e;
+    }
+    const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+    for(;;){
+      arm();
+      const {done,value}=await rd.read();
+      if(done)break;
+      buf+=dec.decode(value,{stream:true}).replace(/\r\n/g,'\n');
+      let i;
+      while((i=buf.indexOf('\n\n'))>=0){
+        const ev=buf.slice(0,i);buf=buf.slice(i+2);
+        const line=ev.split('\n').find(l=>l.startsWith('data:'));if(!line)continue;
+        let j;try{j=JSON.parse(line.slice(5))}catch(_){continue}
+        if(j.modelVersion)mv=j.modelVersion;
+        const ps=(j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[];
+        for(const p of ps)if(p.text&&!p.thought){got+=p.text.length;onText(p.text)}
+      }
+    }
+    if(!got){const e=new Error('respuesta vacía');e.retry=true;throw e}
+    return mv;
+  }catch(e){
+    if(got)return mv;
+    throw e;
   }finally{clearTimeout(to)}
 }
-/* Si Google está saturado: reintenta y, si sigue, prueba con otros modelos */
-async function ask(b64,my){
-  let last;
-  for(const [mi,w] of [[0,0],[0,2500],[1,0],[2,0]]){
+/* Prueba los modelos en el orden elegido; muestra el motivo real de cada fallo */
+async function ask(b64,my,onText){
+  const fails=[];
+  for(const mi of ORDER[S.model]||ORDER.auto){
     if(my!==rid)throw new Error('cancelado');
-    if(w){say('Google está saturado. Reintentando…',1);await new Promise(r=>setTimeout(r,w))}
-    try{return await call(MODELS[mi],b64)}
-    catch(e){last=e;if(!e.retry)throw e}
+    const m=MODELS[mi];
+    try{return await callStream(m,b64,onText)}
+    catch(e){
+      fails.push(m+': '+e.message);
+      if(!e.retry)throw new Error(m+': '+e.message);
+      say('Falló '+m+' ('+e.message.slice(0,40)+'). Probando otro…',1);
+    }
   }
-  throw last;
+  throw new Error(fails.join(' | '));
 }
 
 /* ---------- Audio: voz por frases, bucle y retroceso de 5 s ---------- */
@@ -238,16 +280,39 @@ speechSynthesis.addEventListener('voiceschanged',pickVoice);pickVoice();
 /* Respaldo: si se cuela algún símbolo, se convierte en palabras antes de hablar */
 const SYM={'+':' más ','−':' menos ','×':' por ','÷':' entre ','=':' igual ','²':' al cuadrado ','³':' al cubo ','√':' raíz cuadrada de ','π':' pi ','≤':' menor o igual que ','≥':' mayor o igual que ','≠':' distinto de ','{':' abre llave ','}':' cierra llave ','(':' abre paréntesis ',')':' cierra paréntesis ','[':' abre corchete ',']':' cierra corchete ','<':' menor que ','>':' mayor que ','/':' barra ','%':' por ciento ','&':' y ','^':' elevado a '};
 const clean=t=>t.replace(/(\d)\.(\d)/g,'$1 punto $2').replace(/ - /g,' menos ').replace(/[+−×÷=²³√π≤≥≠{}()\[\]<>\/%&^]/g,c=>SYM[c]).replace(/[*#`_~|]/g,' ').replace(/\s+/g,' ').trim();
-function split(t){
-  const o=[],w=[];
-  for(const line of t.split(/\n+/)){
-    const s=(clean(line).match(/[^.!?;:]+[.!?;:]*/g)||[]).flatMap(x=>x.length>180?x.match(/[^,]+,?/g):[x]);
-    let c='';
-    for(const x of s){if(c&&(c+x).length>170){o.push(c.trim());w.push(350);c=''}c+=x+' '}
-    if(c.trim()){o.push(c.trim());w.push(900)}
+const LET={a:'a',b:'be',c:'ce',d:'de',e:'e',f:'efe',g:'ge',h:'hache',i:'i',j:'jota',k:'ka',l:'ele',m:'eme',n:'ene',o:'o',p:'pe',q:'cu',r:'ere',s:'ese',t:'te',u:'u',v:'uve',w:'doble uve',x:'equis',y:'ye',z:'zeta'};
+const DIG=['cero','uno','dos','tres','cuatro','cinco','seis','siete','ocho','nueve'];
+const SYMN={':':'dos puntos',';':'punto y coma','<':'menor que','>':'mayor que','(':'abre paréntesis',')':'cierra paréntesis','{':'abre llave','}':'cierra llave','[':'abre corchete',']':'cierra corchete','#':'numeral','"':'comillas dobles',"'":'comilla simple','_':'guion bajo','=':'igual','+':'más','-':'menos','*':'asterisco','/':'barra','\\':'barra invertida','.':'punto',',':'coma','&':'ampersand','!':'exclamación','%':'porcentaje','|':'barra vertical','~':'tilde','^':'acento circunflejo','?':'interrogación'};
+function spell(tok){
+  const r=[];
+  for(const ch of tok){
+    const lo=ch.toLowerCase();
+    if(LET[lo])r.push(ch!==lo?'mayúscula '+LET[lo]:LET[lo]);
+    else if(/\d/.test(ch))r.push(DIG[+ch]);
+    else if(SYMN[ch])r.push(SYMN[ch]);
   }
-  P.w=w;return o;
+  return r;
 }
+/* Una línea → fragmentos para hablar. Lo que viene entre [[ ]] se deletrea carácter por carácter */
+function addLine(line){
+  line.split(/\[\[(.+?)\]\]/).forEach((seg,i,arr)=>{
+    if(i%2){const s=spell(seg);s.forEach((n,j)=>{P.ch.push(n);P.w.push(j===s.length-1?900:450)});return}
+    const t=clean(seg);
+    if(!/[a-záéíóúñ0-9]/i.test(t))return;
+    const parts=(t.match(/[^.!?;:]+[.!?;:]*/g)||[]).flatMap(x=>x.length>180?x.match(/[^,]+,?/g):[x]);
+    let c='';
+    for(const x of parts){if(c&&(c+x).length>170){P.ch.push(c.trim());P.w.push(350);c=''}c+=x+' '}
+    if(c.trim()){P.ch.push(c.trim());P.w.push(i===arr.length-1?900:400)}
+  });
+}
+function feed(d,end){
+  P.buf+=d;
+  const parts=P.buf.split('\n');P.buf=end?'':parts.pop();
+  for(const l of parts)addLine(l);
+  if(!end&&P.buf.length>250){const m=P.buf.match(/^([\s\S]*[.!?])\s/);if(m){addLine(m[1]);P.buf=P.buf.slice(m[0].length)}}
+}
+function startPlay(){P.ch=[];P.w=[];P.d=[];P.buf='';P.open=1;P.on=1;session();sil.play().catch(()=>{});from(0)}
+function endFeed(){feed('',1);P.open=0}
 function from(i){
   speechSynthesis.cancel();
   const k=++P.tok;P.i=i;P.pz=0;
@@ -255,6 +320,7 @@ function from(i){
 }
 function nxt(k){
   if(k!==P.tok||!P.on||P.pz)return;
+  if(P.i>=P.ch.length){if(P.open)setTimeout(()=>nxt(k),250);else if(P.ch.length){P.i=0;setTimeout(()=>nxt(k),2000)}return}
   const u=new SpeechSynthesisUtterance(P.ch[P.i]);
   if(V){u.voice=V;u.lang=V.lang}else u.lang='es-ES';
   u.rate=S.rate||.9;
@@ -263,15 +329,10 @@ function nxt(k){
     if(k!==P.tok)return;
     P.d[P.i]=performance.now()-P.t0;
     let w=(P.w&&P.w[P.i])||350;P.i++;
-    if(P.i>=P.ch.length){P.i=0;w=2000}
+    if(P.i>=P.ch.length&&!P.open){P.i=0;w=2000}
     setTimeout(()=>nxt(k),w);
   };
   speechSynthesis.speak(u);
-}
-function play(t){
-  P.ch=split(t);P.d=[];
-  if(!P.ch.length)return;
-  P.on=1;session();sil.play().catch(()=>{});from(0);
 }
 function pz(){
   if(!P.on||P.pz)return;
@@ -285,7 +346,7 @@ function rz(){
   from(j);ps('playing');
 }
 function stop(){
-  P.on=0;P.tok++;
+  P.on=0;P.open=0;P.tok++;
   speechSynthesis.cancel();sil.pause();ps('none');
 }
 const ps=s=>{if('mediaSession' in navigator)navigator.mediaSession.playbackState=s};
@@ -318,20 +379,25 @@ let mode='live',lock=0;
 st.addEventListener('pointerup',e=>{
   if(e.target.closest('.ctl')||Date.now()<lock)return;
   lock=Date.now()+600;
-  if(mode==='live'){S.mode==='native'?openNat():shoot()}
+  if(mode==='live'&&S.mode==='viewer')shoot();
 });
 let rid=0;
 async function analyze(getB64){
-  const my=++rid;mode='busy';say('Preparando…',1);
+  const my=++rid;let started=0;mode='busy';say('Preparando…',1);
   try{
     const b64=await getB64();if(my!==rid)return;
     st.classList.add('res');say('Analizando…',1);
-    const t=await ask(b64,my);if(my!==rid)return;
-    mode='result';play(t);say('Reproduciendo');
+    const mv=await ask(b64,my,d=>{
+      if(my!==rid)return;
+      if(!started){started=1;startPlay();mode='result';say('Reproduciendo…')}
+      feed(d);
+    });
+    if(my!==rid)return;
+    endFeed();say('Reproduciendo · '+mv);
   }catch(err){
     if(my!==rid)return;
     mode='result';st.classList.add('res');
-    say('Error: '+String(err.message||err).slice(0,220));
+    say('Error: '+String(err.message||err).slice(0,260));
   }
 }
 function shoot(){
@@ -358,7 +424,7 @@ function back(){rid++;stop();mode='live';st.classList.remove('res');say('')}
 function sync(){
   sheet.querySelectorAll('.seg').forEach(g=>g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',String(S[g.dataset.k])===b.dataset.v)));
 }
-function openSet(){keyI.value=S.key;sync();showRate();sheet.classList.add('open')}
+function openSet(){keyI.value=S.key;sync();showRate();sysI.value=S.sys||SYS;sheet.classList.add('open')}
 $('#gear').onclick=openSet;
 $('#ok').onclick=()=>sheet.classList.remove('open');
 sheet.onclick=e=>{if(e.target===sheet)sheet.classList.remove('open')};
@@ -369,6 +435,11 @@ sheet.querySelectorAll('.seg').forEach(g=>g.onclick=e=>{
   if(k==='zoom'&&stream)setZoom(S.zoom);if(k==='mode')applyMode();
 });
 
+document.querySelectorAll('.ver').forEach(e=>e.textContent='Versión '+VER);
+const sysI=$('#sys');
+sysI.oninput=()=>{S.sys=sysI.value;save()};
+$('#rst').onclick=()=>{S.sys='';save();sysI.value=SYS};
+$('#shutter').onclick=openNat;
 $('#back').onclick=()=>{back();if(S.mode==='native')openNat()};
 const rateI=$('#rate'),rv=$('#rv');
 function showRate(){S.rate=+S.rate||.9;rateI.value=S.rate;rv.textContent=S.rate.toFixed(2)+'x'}
