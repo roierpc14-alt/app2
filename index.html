@@ -49,6 +49,9 @@ small{display:block;margin-top:6px;color:#8e8e93;font-size:12px}
 .nat #idle{display:flex}.res #idle{display:none}
 .ring{width:96px;height:96px;border-radius:50%;border:5px solid #fff;position:relative}
 .ring::after{content:"";position:absolute;inset:26px;border-radius:50%;background:var(--ac)}
+input[type=range]{padding:0;border:0;background:transparent;accent-color:var(--ac);height:28px}
+#back{position:absolute;top:calc(env(safe-area-inset-top,0px) + 12px);left:14px;width:44px;height:44px;padding:0;border-radius:50%;color:#fff;display:none;place-items:center}
+.res #back{display:grid}
 #ok{width:100%;margin-top:24px;padding:14px;border:0;border-radius:14px;background:var(--ac);color:#000;font:700 16px system-ui,sans-serif}
 </style>
 </head>
@@ -59,6 +62,9 @@ small{display:block;margin-top:6px;color:#8e8e93;font-size:12px}
   <div class="shade"></div>
   <div id="idle"><div class="ring"></div><span>Toca para abrir la cámara</span></div>
   <div id="pill" class="glass"></div>
+  <button id="back" class="ctl glass" aria-label="Volver">
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+  </button>
   <button id="gear" class="ctl glass" aria-label="Ajustes">
     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="7.6" stroke-width="3.2" stroke-dasharray="2.98 2.98"/><circle cx="12" cy="12" r="6"/></svg>
   </button>
@@ -71,6 +77,9 @@ small{display:block;margin-top:6px;color:#8e8e93;font-size:12px}
       <small>Consíguela en aistudio.google.com/apikey. Se guarda solo en este dispositivo.</small>
       <label>Nivel de pensamiento</label>
       <div class="seg" data-k="think"><button data-v="low">Bajo</button><button data-v="mid">Medio</button><button data-v="high">Alto</button></div>
+      <label>Velocidad de la voz: <span id="rv"></span></label>
+      <input id="rate" type="range" min="0.5" max="1.3" step="0.05">
+      <small>Hacia la izquierda es más lenta y pausada.</small>
       <label>Cámara</label>
       <div class="seg" data-k="mode"><button data-v="native">Cámara del teléfono</button><button data-v="viewer">Visor en la app</button></div>
       <label>Zoom inicial (solo visor)</label>
@@ -95,7 +104,7 @@ Reglas de formato, porque tu respuesta se lee en voz alta:
 - Solo texto plano en español: sin markdown, listas, viñetas, asteriscos, emojis ni bloques de código.
 - Escribe los números con palabras y las variables como suenan: equis, ye, zeta, ene, eme.
 - Nunca escribas símbolos matemáticos ni de programación (el signo de suma, el igual, paréntesis, llaves, punto y coma): escribe su nombre con palabras.
-- Frases cortas, una sola instrucción por frase, para que la voz haga pausas.
+- Frases cortas, una sola instrucción por frase, para que la voz haga pausas. En los dictados, escribe cada instrucción en su propia línea de texto: entre líneas la voz hará una pausa larga para que el estudiante escriba o dibuje.
 - Empieza directo, sin saludos.
 
 Primero decide qué pide la foto.
@@ -108,9 +117,9 @@ Dictado de matemáticas. Dicta cada expresión en el orden en que se escribe y m
 
 Dictado de diagramas de flujo. Dicta las figuras de arriba hacia abajo, siempre con los mismos nombres: óvalo para inicio y fin, paralelogramo para entrada y salida de datos, rectángulo para procesos, rombo para decisiones y círculo pequeño para conectores. Ejemplo: Dibuja un óvalo y escribe dentro: Inicio. Debajo, dibuja una flecha hacia abajo. Dibuja un paralelogramo y escribe dentro: leer ene. En cada rombo di qué se escribe dentro, de qué lado sale el sí, de qué lado sale el no y qué se escribe sobre cada flecha. Dicta cada camino hasta que se una con otro o regrese a una figura anterior, nombrando esa figura. Al terminar di: fin del diagrama.
 
-Dictado de código. Dicta el código línea por línea, empezando cada una con su número: Línea uno. Las palabras clave y los nombres cortos, de hasta cuatro letras, como int, cin, for, i o n, se deletrean diciendo el nombre de cada letra, por ejemplo: i ene te. Los nombres largos se dicen enteros después de avisar, por ejemplo: escribe la palabra contador, todo junto y en minúsculas. Los símbolos se dicen por su nombre: numeral, abre paréntesis, cierra paréntesis, abre llave, cierra llave, punto y coma, signo igual, doble signo igual, signo menor que, más más, comillas dobles, guion bajo. Indica los espacios (deja un espacio), las sangrías (deja cuatro espacios) y los saltos de línea (presiona enter para pasar a la siguiente línea). Si algo va en mayúscula, dilo. Al terminar di: fin del código.`;
+Dictado de código. El estudiante escribe el código a mano, en papel, así que habla para alguien que tiene un lápiz en la mano: nunca menciones teclado, enter ni tabulador. Dicta línea por línea, empezando cada una con su número: Línea uno. Cada instrucción va en su propia línea de texto, con un solo elemento por línea. Deletrea siempre todo lo que sea código, tanto las palabras clave como los nombres de variables y funciones, letra por letra, con el nombre de cada letra y separadas por comas, nunca como palabra. Por ejemplo, la palabra int se dicta así: Escribe: i, ene, te. Usa estos nombres de letras: a, be, ce, de, e, efe, ge, hache, i, jota, ka, ele, eme, ene, o, pe, cu, ere, ese, te, u, uve, doble uve, equis, ye, zeta. Si una letra va en mayúscula, di: letra mayúscula. Los números largos se dicen dígito por dígito. Entre un elemento y otro di, en su propia línea: deja un espacio. Los símbolos se dicen por su nombre: numeral, abre paréntesis, cierra paréntesis, abre llave, cierra llave, punto y coma, signo igual, doble signo igual, signo menor que, más más, comillas dobles, guion bajo. Al terminar una línea de código di: pasa a la siguiente línea del papel. Para la sangría di: deja cuatro espacios de sangría desde el margen. Al terminar di: fin del código.`;
 
-let S={key:'',think:'mid',zoom:1,mode:'native'};
+let S={key:'',think:'mid',zoom:1,mode:'native',rate:.9};
 try{Object.assign(S,JSON.parse(localStorage.getItem('zf')||'{}'))}catch(e){}
 const save=()=>{try{localStorage.setItem('zf',JSON.stringify(S))}catch(e){}};
 const say=(t,busy)=>{pill.textContent=t;pill.classList.toggle('busy',!!busy);pill.classList.toggle('on',!!t)};
@@ -206,9 +215,10 @@ async function call(m,b64){
   }finally{clearTimeout(to)}
 }
 /* Si Google está saturado: reintenta y, si sigue, prueba con otros modelos */
-async function ask(b64){
+async function ask(b64,my){
   let last;
   for(const [mi,w] of [[0,0],[0,2500],[1,0],[2,0]]){
+    if(my!==rid)throw new Error('cancelado');
     if(w){say('Google está saturado. Reintentando…',1);await new Promise(r=>setTimeout(r,w))}
     try{return await call(MODELS[mi],b64)}
     catch(e){last=e;if(!e.retry)throw e}
@@ -229,11 +239,14 @@ speechSynthesis.addEventListener('voiceschanged',pickVoice);pickVoice();
 const SYM={'+':' más ','−':' menos ','×':' por ','÷':' entre ','=':' igual ','²':' al cuadrado ','³':' al cubo ','√':' raíz cuadrada de ','π':' pi ','≤':' menor o igual que ','≥':' mayor o igual que ','≠':' distinto de ','{':' abre llave ','}':' cierra llave ','(':' abre paréntesis ',')':' cierra paréntesis ','[':' abre corchete ',']':' cierra corchete ','<':' menor que ','>':' mayor que ','/':' barra ','%':' por ciento ','&':' y ','^':' elevado a '};
 const clean=t=>t.replace(/(\d)\.(\d)/g,'$1 punto $2').replace(/ - /g,' menos ').replace(/[+−×÷=²³√π≤≥≠{}()\[\]<>\/%&^]/g,c=>SYM[c]).replace(/[*#`_~|]/g,' ').replace(/\s+/g,' ').trim();
 function split(t){
-  const s=(clean(t).match(/[^.!?;:]+[.!?;:]*/g)||[]).flatMap(x=>x.length>180?x.match(/[^,]+,?/g):[x]);
-  const o=[];let c='';
-  for(const x of s){if(c&&(c+x).length>170){o.push(c.trim());c=''}c+=x+' '}
-  if(c.trim())o.push(c.trim());
-  return o;
+  const o=[],w=[];
+  for(const line of t.split(/\n+/)){
+    const s=(clean(line).match(/[^.!?;:]+[.!?;:]*/g)||[]).flatMap(x=>x.length>180?x.match(/[^,]+,?/g):[x]);
+    let c='';
+    for(const x of s){if(c&&(c+x).length>170){o.push(c.trim());w.push(350);c=''}c+=x+' '}
+    if(c.trim()){o.push(c.trim());w.push(900)}
+  }
+  P.w=w;return o;
 }
 function from(i){
   speechSynthesis.cancel();
@@ -244,13 +257,14 @@ function nxt(k){
   if(k!==P.tok||!P.on||P.pz)return;
   const u=new SpeechSynthesisUtterance(P.ch[P.i]);
   if(V){u.voice=V;u.lang=V.lang}else u.lang='es-ES';
+  u.rate=S.rate||.9;
   u.onstart=()=>{if(k===P.tok)P.t0=performance.now()};
   u.onend=u.onerror=()=>{
     if(k!==P.tok)return;
     P.d[P.i]=performance.now()-P.t0;
-    P.i++;let w=0;
-    if(P.i>=P.ch.length){P.i=0;w=1500}
-    setTimeout(()=>nxt(k),w||350);
+    let w=(P.w&&P.w[P.i])||350;P.i++;
+    if(P.i>=P.ch.length){P.i=0;w=2000}
+    setTimeout(()=>nxt(k),w);
   };
   speechSynthesis.speak(u);
 }
@@ -305,18 +319,19 @@ st.addEventListener('pointerup',e=>{
   if(e.target.closest('.ctl')||Date.now()<lock)return;
   lock=Date.now()+600;
   if(mode==='live'){S.mode==='native'?openNat():shoot()}
-  else if(mode==='result'){back();if(S.mode==='native')openNat()}
 });
+let rid=0;
 async function analyze(getB64){
-  mode='busy';say('Preparando…',1);
+  const my=++rid;mode='busy';say('Preparando…',1);
   try{
-    const b64=await getB64();
+    const b64=await getB64();if(my!==rid)return;
     st.classList.add('res');say('Analizando…',1);
-    const t=await ask(b64);
-    mode='result';play(t);say('Reproduciendo. Toca para una nueva foto');
+    const t=await ask(b64,my);if(my!==rid)return;
+    mode='result';play(t);say('Reproduciendo');
   }catch(err){
+    if(my!==rid)return;
     mode='result';st.classList.add('res');
-    say('Error: '+String(err.message||err).slice(0,220)+'. Toca para volver');
+    say('Error: '+String(err.message||err).slice(0,220));
   }
 }
 function shoot(){
@@ -337,13 +352,13 @@ async function fromFile(f){
   return cv.toDataURL('image/jpeg',.85).split(',')[1];
 }
 nat.onchange=()=>{const f=nat.files[0];if(f)analyze(()=>fromFile(f))};
-function back(){stop();mode='live';st.classList.remove('res');say('')}
+function back(){rid++;stop();mode='live';st.classList.remove('res');say('')}
 
 /* ---------- Ajustes ---------- */
 function sync(){
   sheet.querySelectorAll('.seg').forEach(g=>g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',String(S[g.dataset.k])===b.dataset.v)));
 }
-function openSet(){keyI.value=S.key;sync();sheet.classList.add('open')}
+function openSet(){keyI.value=S.key;sync();showRate();sheet.classList.add('open')}
 $('#gear').onclick=openSet;
 $('#ok').onclick=()=>sheet.classList.remove('open');
 sheet.onclick=e=>{if(e.target===sheet)sheet.classList.remove('open')};
@@ -354,6 +369,17 @@ sheet.querySelectorAll('.seg').forEach(g=>g.onclick=e=>{
   if(k==='zoom'&&stream)setZoom(S.zoom);if(k==='mode')applyMode();
 });
 
+$('#back').onclick=()=>{back();if(S.mode==='native')openNat()};
+const rateI=$('#rate'),rv=$('#rv');
+function showRate(){S.rate=+S.rate||.9;rateI.value=S.rate;rv.textContent=S.rate.toFixed(2)+'x'}
+rateI.oninput=()=>{S.rate=+rateI.value;save();rv.textContent=S.rate.toFixed(2)+'x'};
+rateI.onchange=()=>{
+  if(P.on)return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance('Escribe: i, ene, te. Deja un espacio.');
+  if(V){u.voice=V;u.lang=V.lang}else u.lang='es-ES';
+  u.rate=S.rate;speechSynthesis.speak(u);
+};
 function applyMode(){
   const isN=S.mode==='native';
   st.classList.toggle('nat',isN);
