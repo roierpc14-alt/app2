@@ -120,6 +120,12 @@ select{width:100%;padding:12px;border-radius:12px;border:1px solid #3a3a3c;backg
       <label>Velocidad de la voz: <span id="rv"></span></label>
       <input id="rate" type="range" min="0.5" max="1.3" step="0.05">
       <small>Hacia la izquierda es más lenta y pausada.</small>
+      <label>Dónde hacer las pausas</label>
+      <div class="seg" data-k="grp"><button data-v="smart">Por frases</button><button data-v="word">Cada palabra</button></div>
+      <small>Por frases agrupa lo que se escribe junto (por ejemplo: te elevado a la dos) y pausa entre grupos.</small>
+      <label>Duración de cada pausa: <span id="wgv"></span></label>
+      <input id="wgap" type="range" min="0.5" max="2" step="0.1">
+      <small>Mínimo medio segundo. Es silencio real entre un grupo y el siguiente.</small>
       <label>Cámara</label>
       <div class="seg" data-k="mode"><button data-v="native">Cámara del teléfono</button><button data-v="viewer">Visor en la app</button></div>
       <label>Zoom inicial (solo visor)</label>
@@ -180,7 +186,7 @@ select{width:100%;padding:12px;border-radius:12px;border:1px solid #3a3a3c;backg
 const $=s=>document.querySelector(s);
 const st=$('#stage'),vid=$('#v'),cv=$('#c'),pill=$('#pill'),zb=$('#zb'),sheet=$('#set'),keyI=$('#key'),sil=$('#sil');
 const LVL={low:'LOW',mid:'MEDIUM',high:'HIGH'};
-const VER='v8.3';
+const VER='v8.5';
 const MODELS=['gemini-flash-latest','gemini-3.6-flash','gemini-3.5-flash-lite'];
 const ORDER={auto:[0,1,2],est:[1,0,2],rap:[2,1,0]};
 const ESTILO=`FORMATO DE LA VOZ. Todo lo que respondas se lee en voz alta. Usa solo texto plano en español: sin markdown, sin viñetas, sin asteriscos, sin emojis, sin bloques de código. Cada instrucción va en su propio renglón (salto de línea). Frases cortas. No escribas la palabra pausa.
@@ -223,7 +229,7 @@ Termina con una frase que diga el resultado final que quedó escrito.
 
 Prohibido: saludar, decir vamos a resolver, vamos a analizar, aquí tenemos, recuerda que, esto significa, o cualquier introducción o relleno. Empieza directo con la primera palabra útil.`;
 
-let S={key:'',think:'mid',zoom:1,mode:'native',rate:.9,model:'auto',sys:'',engine:'gemini',voice:'Kore',pvoice:'',ex:[],camMem:'on'};
+let S={key:'',think:'mid',zoom:1,mode:'native',rate:.9,wgap:.5,grp:'smart',model:'auto',sys:'',engine:'gemini',voice:'Kore',pvoice:'',ex:[],camMem:'on'};
 try{Object.assign(S,JSON.parse(localStorage.getItem('zf')||'{}'))}catch(e){}
 const save=()=>{try{localStorage.setItem('zf',JSON.stringify(S))}catch(e){}};
 const say=(t,busy)=>{pill.textContent=t;pill.classList.toggle('busy',!!busy);pill.classList.toggle('on',!!t);const c=document.getElementById('cstat');if(c)c.textContent=t||''};
@@ -407,17 +413,71 @@ function spell(tok){
   }
   return r;
 }
-/* Una línea → fragmentos para hablar. Lo que viene entre [[ ]] se deletrea carácter por carácter */
-function addLine(line){
+/* Pausa mínima entre palabras (ms). Nunca baja de 500. */
+const wg=()=>Math.max(500,Math.round((+S.wgap||.5)*1000));
+const WORDS=t=>t.split(/\s+/).map(w=>w.replace(/^[^a-záéíóúüñ0-9]+|[^a-záéíóúüñ0-9]+$/gi,'')).filter(w=>/[a-záéíóúüñ0-9]/i.test(w));
+/* ---- Agrupación en frases: pausa solo entre grupos que se escriben juntos ---- */
+const EDGE=/^[^a-záéíóúüñ0-9]+|[^a-záéíóúüñ0-9]+$/gi;
+const nz=w=>w.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+const DELA=new Set(['abre','abrir','cierra','cerrar']),DELB=new Set(['llave','llaves','parentesis','corchete','corchetes']);
+const OPS=new Set(['mas','menos','igual','por']);
+const NOAFT=new Set(['a','de','la','el','las','los','un','una','al','del','elevado','sub','con','y','en','o','que','para']);
+const NOBEF=new Set(['prima','doble','triple','mayuscula','minuscula','sub','de','a','al','del','elevado']);
+const CAP=6;
+/* Un grupo con más de CAP palabras se parte, de preferencia antes de más/menos/igual/por y sin separar cosas como "ye doble prima" o "elevado a la dos" */
+function splitLong(w){
+  const n=w.length;if(n<=CAP)return [w];
+  let best=-1,bs=-1e9;
+  for(let k=2;k<=n-2;k++){
+    if(NOAFT.has(nz(w[k-1]))||OPS.has(nz(w[k-1]))||NOBEF.has(nz(w[k])))continue;
+    const sc=(OPS.has(nz(w[k]))?10:0)-Math.abs(k-n/2);
+    if(sc>bs){bs=sc;best=k}
+  }
+  if(best<0)best=Math.ceil(n/2);
+  return splitLong(w.slice(0,best)).concat(splitLong(w.slice(best)));
+}
+/* Texto → [[frase, pausa extra al terminar], ...]. Se corta en: signos de puntuación, antes y después de
+   "abre/cierra llave|paréntesis|corchete", y cuando un grupo se hace demasiado largo. */
+function phrasesOf(text){
+  const t=text.split(/\s+/).filter(Boolean),out=[];let cur=[];
+  const flush=g=>{if(!cur.length)return;splitLong(cur).forEach((p,i,a)=>out.push([p.join(' '),i===a.length-1?g:0]));cur=[]};
+  const gp=pu=>/[.!?;:]/.test(pu)?700:0;
+  for(let i=0;i<t.length;i++){
+    const w=t[i].replace(EDGE,''),pu=(t[i].match(/[.,;:!?]+$/)||[''])[0];
+    if(!/[a-záéíóúüñ0-9]/i.test(w))continue;
+    const nx=t[i+1]?t[i+1].replace(EDGE,''):'';
+    if(DELA.has(nz(w))&&DELB.has(nz(nx))){
+      flush(0);
+      out.push([w+' '+nx,gp((t[i+1].match(/[.,;:!?]+$/)||[''])[0])]);i++;continue;
+    }
+    cur.push(w);
+    if(pu)flush(gp(pu));
+  }
+  flush(0);
+  return out;
+}
+/* Una línea → lista de [texto, pausa extra al terminar]. Lo que viene entre [[ ]] se deletrea carácter por carácter */
+function lineWords(line){
+  const f=[],smart=S.grp!=='word';
   line.split(/\[\[(.+?)\]\]/).forEach((seg,i,arr)=>{
-    if(i%2){const s=spell(seg);s.forEach((n,j)=>{P.ch.push(n);P.w.push(j===s.length-1?900:450)});return}
-    const t=clean(seg);
-    if(!/[a-záéíóúñ0-9]/i.test(t))return;
-    const parts=(t.match(/[^.!?;:]+[.!?;:]*/g)||[]).flatMap(x=>x.length>180?x.match(/[^,]+,?/g):[x]);
-    let c='';
-    for(const x of parts){if(c&&(c+x).length>170){P.ch.push(c.trim());P.w.push(350);c=''}c+=x+' '}
-    if(c.trim()){P.ch.push(c.trim());P.w.push(i===arr.length-1?900:400)}
+    if(i%2){
+      const s=spell(seg);
+      s.forEach((n,j)=>{
+        const g=j===s.length-1?900:450;
+        if(smart)f.push([n,g]);
+        else{const w=WORDS(n);w.forEach((x,k)=>f.push([x,k===w.length-1?g:0]))}
+      });
+    }else{
+      const t=clean(seg),p=smart?phrasesOf(t):WORDS(t).map(w=>[w,0]);
+      if(p.length)p[p.length-1][1]=Math.max(p[p.length-1][1],i===arr.length-1?900:400);
+      f.push(...p);
+    }
   });
+  return f;
+}
+/* Voz del teléfono: cada frase es un fragmento, con silencio real (temporizador) entre una y otra */
+function addLine(line){
+  lineWords(line).forEach(([w,g])=>{P.ch.push(w);P.w.push(Math.max(g,wg()))});
 }
 const ALL=[];
 let useG=false,feedOpen=0;
@@ -469,7 +529,7 @@ function pz(){
 function rz(){
   if(!P.on||!P.pz)return;
   let j=P.i,r=P.el;
-  while(r<5000&&j>0){j--;r+=P.d[j]||2500}
+  while(r<5000&&j>0){j--;r+=(P.d[j]||800)+((P.w&&P.w[j])||0)}
   from(j);ps('playing');
 }
 function stop(){
@@ -557,26 +617,23 @@ async function tts(text){
   if(text.length<=60)dbSet(key,new Int16Array(p).buffer);
   return p;
 }
-function chunks(t){
-  const s=(t.match(/[^.!?;:]+[.!?;:]*/g)||[]).flatMap(x=>x.length>180?x.match(/[^,]+,?/g):[x]),o=[];let c='';
-  for(const x of s){if(c&&(c+x).length>170){o.push(c.trim());c=''}c+=x+' '}
-  if(c.trim())o.push(c.trim());
-  return o;
-}
 function gUnits(line){
-  const sg=line.split(/\[\[(.+?)\]\]/);
-  if(sg.length===1){const t=clean(line);return /[a-záéíóúñ0-9]/i.test(t)?chunks(t).map((c,i,a)=>[['t',c,i===a.length-1?900:350]]):[]}
-  const u=[];
-  sg.forEach((s,i,a)=>{
-    if(i%2){const n=spell(s);n.forEach((x,j)=>u.push(['k',x,j===n.length-1?900:450]))}
-    else{const t=clean(s);if(/[a-záéíóúñ0-9]/i.test(t))u.push(['t',t,i===a.length-1?900:400])}
-  });
-  return u.length?[u]:[];
+  const f=lineWords(line),u=[],WMAX=S.grp==='word'?5:3;
+  for(let i=0;i<f.length;i+=WMAX)u.push(f.slice(i,i+WMAX).map(([w,g])=>['t',w,g]));
+  return u;
 }
+/* Cada frase se sintetiza sola (se guarda en el teléfono y se pide una sola vez) y se le pega un silencio.
+   El silencio se compensa con la velocidad de reproducción para que dure de verdad lo configurado. */
 async function gBuild(u){
+  const k=G.tok,need=[...new Set(u.map(x=>x[1]))],got={};
+  let q=0;
+  await Promise.all(Array.from({length:Math.min(4,need.length)},async()=>{
+    while(q<need.length&&k===G.tok){const w=need[q++];got[w]=await tts(w)}
+  }));
+  if(k!==G.tok)return null;
   const parts=[];let n=0;
   for(const [kd,x,g] of u){
-    const p=await tts(x),z=new Int16Array(Math.round(RATE*g/1000));
+    const p=got[x],z=new Int16Array(Math.round(RATE*Math.max(g,wg())*(S.rate||1)/1000));
     parts.push(p,z);n+=p.length+z.length;
   }
   const all=new Int16Array(n);let o=0;
@@ -599,7 +656,7 @@ async function gPump(){
       const line=G.todo.shift();
       for(const u of gUnits(line)){
         const it=await gBuild(u);
-        if(k!==G.tok)return;
+        if(!it||k!==G.tok)return;
         G.q.push(it);
         if(G.wait||G.q.length===1){G.wait=0;gPlay(G.q.length-1);if(G.q.length===1)say('Reproduciendo…')}
       }
@@ -704,7 +761,7 @@ function back(){rid++;stop();mode='live';st.classList.remove('res');say('');updN
 function sync(){
   sheet.querySelectorAll('.seg').forEach(g=>g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',String(S[g.dataset.k])===b.dataset.v)));
 }
-function openSet(){keyI.value=S.key;sync();showRate();sysI.value=S.sys||SYS;csysI.value=S.chatSys||CHATSYS;fillPv();gv.value=S.voice;renderEx();sheet.classList.add('open')}
+function openSet(){keyI.value=S.key;sync();showRate();showWg();sysI.value=S.sys||SYS;csysI.value=S.chatSys||CHATSYS;fillPv();gv.value=S.voice;renderEx();sheet.classList.add('open')}
 $('#gear').onclick=openSet;
 $('#ok').onclick=()=>sheet.classList.remove('open');
 sheet.onclick=e=>{if(e.target===sheet)sheet.classList.remove('open')};
@@ -833,7 +890,7 @@ $('#exok').onclick=()=>{
 
 /* ---- Copia de seguridad (ejemplos, instrucciones y preferencias; nunca la clave) ---- */
 $('#bk').onclick=async()=>{
-  const d=JSON.stringify({v:1,sys:S.sys||'',chatSys:S.chatSys||'',sysPrev:S.sysPrev||'',chatSysPrev:S.chatSysPrev||'',ex:S.ex||[],think:S.think,rate:S.rate,model:S.model,engine:S.engine,voice:S.voice,mode:S.mode,camMem:S.camMem});
+  const d=JSON.stringify({v:1,sys:S.sys||'',chatSys:S.chatSys||'',sysPrev:S.sysPrev||'',chatSysPrev:S.chatSysPrev||'',ex:S.ex||[],think:S.think,rate:S.rate,wgap:S.wgap,grp:S.grp,model:S.model,engine:S.engine,voice:S.voice,mode:S.mode,camMem:S.camMem});
   $('#bkt').value=d;
   try{await navigator.clipboard.writeText(d);$('#bkm').textContent='Copiado. Pégalo en tus notas.'}
   catch(e){$('#bkm').textContent='Selecciona el texto de la caja y cópialo.'}
@@ -846,8 +903,9 @@ $('#rs').onclick=()=>{
     if(typeof d.sysPrev==='string')S.sysPrev=d.sysPrev;
     if(typeof d.chatSysPrev==='string')S.chatSysPrev=d.chatSysPrev;
     if(Array.isArray(d.ex))S.ex=d.ex.slice(0,5).filter(e=>e&&e.q&&e.a).map(e=>({t:String(e.t||e.q).slice(0,40),q:String(e.q).slice(0,EXMAX),a:String(e.a).slice(0,EXMAX),on:e.on!==false}));
-    ['think','model','engine','voice','mode','camMem'].forEach(k=>{if(typeof d[k]==='string')S[k]=d[k]});
+    ['think','model','engine','voice','mode','camMem','grp'].forEach(k=>{if(typeof d[k]==='string')S[k]=d[k]});
     if(typeof d.rate==='number')S.rate=d.rate;
+    if(typeof d.wgap==='number')S.wgap=Math.max(.5,d.wgap);
     save();openSet();applyMode();updNew();$('#bkm').textContent='Restaurado.';
   }catch(e){$('#bkm').textContent='Ese texto no es una copia de seguridad válida.'}
 };
@@ -856,6 +914,9 @@ $('#shutter').onclick=openNat;
 $('#back').onclick=()=>{back();if(S.mode==='native')openNat()};
 const rateI=$('#rate'),rv=$('#rv');
 function showRate(){S.rate=+S.rate||.9;rateI.value=S.rate;rv.textContent=S.rate.toFixed(2)+'x'}
+const wgI=$('#wgap'),wgv=$('#wgv');
+function showWg(){S.wgap=Math.max(.5,+S.wgap||.5);wgI.value=S.wgap;wgv.textContent=S.wgap.toFixed(1)+' s'}
+wgI.oninput=()=>{S.wgap=Math.max(.5,+wgI.value);save();wgv.textContent=S.wgap.toFixed(1)+' s'};
 rateI.oninput=()=>{S.rate=+rateI.value;save();gp.playbackRate=S.rate;rv.textContent=S.rate.toFixed(2)+'x'};
 rateI.onchange=()=>{
   if(P.on)return;
